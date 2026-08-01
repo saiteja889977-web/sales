@@ -31,14 +31,24 @@ st.markdown("""
 # 3. Load and Cache the Data
 @st.cache_data
 def load_data():
-    # Reads the uploaded excel file
     df = pd.read_excel("Distributer wise sale.xlsx", sheet_name="Sheet1")
+    # Automatically clean up column names (remove hidden spaces and make uppercase for consistency)
+    df.columns = df.columns.astype(str).str.strip()
+    
+    # Standardize column naming just in case it's lowercase in the sheet
+    mapping = {}
+    for col in df.columns:
+        if col.upper() == 'USER': mapping[col] = 'USER'
+        elif col.upper() == 'DISTRIBUTOR': mapping[col] = 'Distributor'
+        elif col.upper() == 'BEAT': mapping[col] = 'Beat'
+        elif col.upper() == 'QTY': mapping[col] = 'QTY'
+    df = df.rename(columns=mapping)
     return df
 
 try:
     df = load_data()
 except Exception as e:
-    st.error(f"Error loading file: Ensure 'Distributer wise sale.xlsx' is in the same folder as this script.")
+    st.error(f"Error loading file: Ensure 'Distributer wise sale.xlsx' is in the same folder as this script. Details: {e}")
     st.stop()
 
 # 4. Header Section
@@ -48,42 +58,51 @@ st.markdown('<div class="sub-title">Interactive reporting tool for sales overvie
 # 5. Sidebar Filters
 st.sidebar.header("🎯 Filter Options")
 
-# Search / Filter by User
-user_list = ["All Users"] + sorted(df["USER"].dropna().unique().tolist())
-selected_user = st.sidebar.selectbox("Filter by Sales Representative (USER)", user_list)
+# Safely check if core columns exist, otherwise fall back to whatever columns are available
+user_col = "USER" if "USER" in df.columns else df.columns[0]
+dist_col = "Distributor" if "Distributor" in df.columns else df.columns[1] if len(df.columns) > 1 else df.columns[0]
+beat_col = "Beat" if "Beat" in df.columns else df.columns[2] if len(df.columns) > 2 else df.columns[0]
+qty_col = "QTY" if "QTY" in df.columns else df.columns[-1]
 
-# Filter by Distributor
-dist_list = ["All Distributors"] + sorted(df["Distributor"].dropna().unique().tolist())
-selected_dist = st.sidebar.selectbox("Filter by Distributor", dist_list)
+# Build dropdown filters dynamically
+user_list = ["All Users"] + sorted(df[user_col].dropna().unique().tolist())
+selected_user = st.sidebar.selectbox(f"Filter by User ({user_col})", user_list)
 
-# Filter by Beat
-beat_list = ["All Beats"] + sorted(df["Beat"].dropna().unique().tolist())
-selected_beat = st.sidebar.selectbox("Filter by Beat", beat_list)
+dist_list = ["All Distributors"] + sorted(df[dist_col].dropna().unique().tolist())
+selected_dist = st.sidebar.selectbox(f"Filter by Distributor ({dist_col})", dist_list)
+
+beat_list = ["All Beats"] + sorted(df[beat_col].dropna().unique().tolist())
+selected_beat = st.sidebar.selectbox(f"Filter by Beat ({beat_col})", beat_list)
 
 # Apply filters sequentially
 filtered_df = df.copy()
 if selected_user != "All Users":
-    filtered_df = filtered_df[filtered_df["USER"] == selected_user]
+    filtered_df = filtered_df[filtered_df[user_col] == selected_user]
 if selected_dist != "All Distributors":
-    filtered_df = filtered_df[filtered_df["Distributor"] == selected_dist]
+    filtered_df = filtered_df[filtered_df[dist_col] == selected_dist]
 if selected_beat != "All Beats":
-    filtered_df = filtered_df[filtered_df["Beat"] == selected_beat]
+    filtered_df = filtered_df[filtered_df[beat_col] == selected_beat]
 
 # 6. Top Level Performance Metrics (KPI Cards)
-total_qty = int(filtered_df["QTY"].sum())
-unique_dists = filtered_df["Distributor"].nunique()
-unique_beats = filtered_df["Beat"].nunique()
-unique_users = filtered_df["USER"].nunique()
+# Try to sum the numeric columns safely
+try:
+    total_qty = int(pd.to_numeric(filtered_df[qty_col], errors='coerce').sum())
+except:
+    total_qty = len(filtered_df)
+
+unique_dists = filtered_df[dist_col].nunique()
+unique_beats = filtered_df[beat_col].nunique()
+unique_users = filtered_df[user_col].nunique()
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Total Order Qty", f"{total_qty:,}")
+    st.metric("Total Order Volume", f"{total_qty:,}")
 with col2:
     st.metric("Active Distributors", unique_dists)
 with col3:
     st.metric("Covered Beats", unique_beats)
 with col4:
-    st.metric("Sales Users", unique_users)
+    st.metric("Unique Sales Reps", unique_users)
 
 st.markdown("---")
 
@@ -91,48 +110,43 @@ st.markdown("---")
 chart_col, table_col = st.columns([1.1, 0.9])
 
 with chart_col:
-    st.subheader("📈 Top Distributors by Sales Quantity")
-    # Group by Distributor for visualization
-    dist_summary = filtered_df.groupby("Distributor")["QTY"].sum().reset_index()
-    dist_summary = dist_summary.sort_values(by="QTY", ascending=False).head(10)
-    
-    if not dist_summary.empty:
-        fig = px.bar(
-            dist_summary, 
-            x="QTY", 
-            y="Distributor", 
-            orientation='h',
-            text="QTY",
-            color="QTY",
-            color_continuous_scale="Blues",
-            labels={"QTY": "Total Quantity (Units)"}
-        )
-        fig.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(l=20, r=20, t=20, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No data available for the chosen filters.")
+    st.subheader("📈 Top Distribution Points")
+    try:
+        dist_summary = filtered_df.groupby(dist_col)[qty_col].sum().reset_index()
+        dist_summary = dist_summary.sort_values(by=qty_col, ascending=False).head(10)
+        
+        if not dist_summary.empty:
+            fig = px.bar(
+                dist_summary, 
+                x=qty_col, 
+                y=dist_col, 
+                orientation='h',
+                text=qty_col,
+                color=qty_col,
+                color_continuous_scale="Blues",
+                labels={qty_col: "Total Sales Volume"}
+            )
+            fig.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, margin=dict(l=20, r=20, t=20, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No data matching current criteria.")
+    except Exception as e:
+        st.info("Select standard numerical columns to display visual graphs.")
 
 with table_col:
     st.subheader("👥 Sales Rep Breakdown")
-    user_summary = filtered_df.groupby("USER")["QTY"].sum().reset_index()
-    user_summary = user_summary.sort_values(by="QTY", ascending=False)
-    st.dataframe(user_summary, use_container_width=True, height=400, hide_index=True)
+    try:
+        user_summary = filtered_df.groupby(user_col)[qty_col].sum().reset_index()
+        user_summary = user_summary.sort_values(by=qty_col, ascending=False)
+        st.dataframe(user_summary, use_container_width=True, height=400, hide_index=True)
+    except:
+        st.dataframe(filtered_df[[user_col]].value_counts().reset_index(), use_container_width=True, height=400)
 
 st.markdown("---")
 
 # 8. Complete Filtered Data Table View
 st.subheader("📋 Detailed Breakdown Ledger")
-st.markdown("Use the global search below to immediately filter any text row dynamically.")
-
-# Let's show clean column view (identifying primary text columns + total quantity)
-columns_to_show = ["USER", "Distributor", "Beat", "FIRST", "SECOND", "THIRD", "FOURTH", "QTY"]
-# Filter columns list dynamically based on availability
-columns_to_show = [c for c in columns_to_show if c in filtered_df.columns]
-
-st.dataframe(
-    filtered_df[columns_to_show + [col for col in filtered_df.columns if col not in columns_to_show and filtered_df[col].sum() > 0]], 
-    use_container_width=True
-)
+st.dataframe(filtered_df, use_container_width=True)
 
 # 9. Download Option
 st.sidebar.markdown("---")
