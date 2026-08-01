@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Custom CSS to style like a premium modern application
+# 2. Custom CSS Stylesheet
 st.markdown("""
     <style>
     .main-title {
@@ -32,10 +32,9 @@ st.markdown("""
 @st.cache_data
 def load_data():
     df = pd.read_excel("Distributer wise sale.xlsx", sheet_name="Sheet1")
-    # Automatically clean up column names (remove hidden spaces and make uppercase for consistency)
+    # Clean hidden spaces around text and standardize common column headers
     df.columns = df.columns.astype(str).str.strip()
     
-    # Standardize column naming just in case it's lowercase in the sheet
     mapping = {}
     for col in df.columns:
         if col.upper() == 'USER': mapping[col] = 'USER'
@@ -48,23 +47,21 @@ def load_data():
 try:
     df = load_data()
 except Exception as e:
-    st.error(f"Error loading file: Ensure 'Distributer wise sale.xlsx' is in the same folder as this script. Details: {e}")
+    st.error(f"Error loading file: Ensure 'Distributer wise sale.xlsx' is in the folder. Details: {e}")
     st.stop()
 
 # 4. Header Section
 st.markdown('<div class="main-title">📊 Distributor Wise Sales Analytics</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Interactive reporting tool for sales overview, filters, metrics, and breakdowns.</div>', unsafe_allow_html=True)
 
-# 5. Sidebar Filters
+# 5. Dynamic Sidebar Filters
 st.sidebar.header("🎯 Filter Options")
 
-# Safely check if core columns exist, otherwise fall back to whatever columns are available
 user_col = "USER" if "USER" in df.columns else df.columns[0]
 dist_col = "Distributor" if "Distributor" in df.columns else df.columns[1] if len(df.columns) > 1 else df.columns[0]
 beat_col = "Beat" if "Beat" in df.columns else df.columns[2] if len(df.columns) > 2 else df.columns[0]
 qty_col = "QTY" if "QTY" in df.columns else df.columns[-1]
 
-# Build dropdown filters dynamically
 user_list = ["All Users"] + sorted(df[user_col].dropna().unique().tolist())
 selected_user = st.sidebar.selectbox(f"Filter by User ({user_col})", user_list)
 
@@ -74,7 +71,7 @@ selected_dist = st.sidebar.selectbox(f"Filter by Distributor ({dist_col})", dist
 beat_list = ["All Beats"] + sorted(df[beat_col].dropna().unique().tolist())
 selected_beat = st.sidebar.selectbox(f"Filter by Beat ({beat_col})", beat_list)
 
-# Apply filters sequentially
+# Applying user choices to data dynamically
 filtered_df = df.copy()
 if selected_user != "All Users":
     filtered_df = filtered_df[filtered_df[user_col] == selected_user]
@@ -83,8 +80,7 @@ if selected_dist != "All Distributors":
 if selected_beat != "All Beats":
     filtered_df = filtered_df[filtered_df[beat_col] == selected_beat]
 
-# 6. Top Level Performance Metrics (KPI Cards)
-# Try to sum the numeric columns safely
+# 6. High-Level Summary Statistics (KPI Cards)
 try:
     total_qty = int(pd.to_numeric(filtered_df[qty_col], errors='coerce').sum())
 except:
@@ -106,7 +102,7 @@ with col4:
 
 st.markdown("---")
 
-# 7. Layout Split: Charts & Tables
+# 7. Layout Split: Charts & Analytical Tables
 chart_col, table_col = st.columns([1.1, 0.9])
 
 with chart_col:
@@ -131,7 +127,7 @@ with chart_col:
         else:
             st.info("No data matching current criteria.")
     except Exception as e:
-        st.info("Select standard numerical columns to display visual graphs.")
+        st.info("Provide numerical data elements to render calculations.")
 
 with table_col:
     st.subheader("👥 Sales Rep Breakdown")
@@ -144,11 +140,11 @@ with table_col:
 
 st.markdown("---")
 
-# 8. Complete Filtered Data Table View
+# 8. Filtered Raw Data Explorer View
 st.subheader("📋 Detailed Breakdown Ledger")
 st.dataframe(filtered_df, use_container_width=True)
 
-# 9. Download Option
+# 9. Dynamic CSV Exporter Utility
 st.sidebar.markdown("---")
 csv = filtered_df.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
