@@ -110,7 +110,7 @@ if not high_orders.empty:
 # 4. App Main Workspace Header Banner
 st.markdown("""
     <div class="hero-banner">
-        <h1>⚡ Enterprise Sales Command Suite v3.2</h1>
+        <h1>⚡ Enterprise Sales Command Suite v3.3</h1>
         <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and smart analytical heatmaps.</p>
     </div>
 """, unsafe_allow_html=True)
@@ -216,7 +216,6 @@ with tab_main:
     with g_right:
         st.subheader("📈 Period Trend Dynamic Evaluation")
         trend_df = working_df.groupby(agg_col)[['Period 1', 'Period 2']].sum().reset_index().head(15)
-        # --- FIXED ISSUE HERE: Moved template inside update_layout ---
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Bar(x=trend_df[agg_col], y=trend_df['Period 1'], name='Period 1', marker_color='#93C5FD'))
         fig_trend.add_trace(go.Bar(x=trend_df[agg_col], y=trend_df['Period 2'], name='Period 2', marker_color='#1E40AF'))
@@ -237,14 +236,21 @@ with tab_main:
         fig_time = px.line(timeline_df, x='Date', y='QTY', markers=True, template=plotly_template, color_discrete_sequence=[primary_color])
         st.plotly_chart(fig_time, use_container_width=True)
 
-    # --- HEATMAP STYLIZED TABLE DATA LAYOUT ---
+    # --- ADVANCED LEDGER TABLE ---
     st.subheader("📋 Advanced Ledger Matrix Dashboard")
     st.markdown("_Click column headers to instantly sort data structure rows._")
     
     styled_view = working_df[[user_col, dist_col, beat_col, 'PrimaryCategory', 'Period 1', 'Period 2', 'QTY']].copy()
+    
+    # Native Streamlit dataframe with interactive sorting & numeric formatting
     st.dataframe(
-        styled_view.style.background_gradient(cmap="Blues", subset=['Period 1', 'Period 2', 'QTY']),
-        use_container_width=True
+        styled_view,
+        use_container_width=True,
+        column_config={
+            "Period 1": st.column_config.NumberColumn(format="%d"),
+            "Period 2": st.column_config.NumberColumn(format="%d"),
+            "QTY": st.column_config.NumberColumn(format="%d")
+        }
     )
 
 with tab_compare:
