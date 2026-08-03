@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import io
+import os
 
 # 1. Page Configuration
 st.set_page_config(
@@ -41,18 +41,11 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# --- LIVE FILE UPLOAD ENGINE ---
-st.sidebar.markdown("### 📂 Data Source Ingestion")
-uploaded_file = st.sidebar.file_uploader(
-    "Upload a new Sales Excel Sheet directly here:", 
-    type=["xlsx", "xls"], 
-    help="Upload your latest report to instantly switch data context without going back to GitHub."
-)
-
 # 3. Robust Data Processing Pipeline
 @st.cache_data
 def process_data(file_source):
-    df = pd.read_excel(file_source, sheet_name="Sheet1")
+    # Reads first available sheet automatically
+    df = pd.read_excel(file_source, sheet_name=0)
     df.columns = df.columns.astype(str).str.strip()
     
     # Header Mapping Core Columns
@@ -81,16 +74,53 @@ def process_data(file_source):
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce').fillna(pd.Timestamp('2026-08-01'))
     return df
 
-# Load dynamic data source target
-try:
-    if uploaded_file is not None:
+# App Main Workspace Header Banner
+st.markdown("""
+    <div class="hero-banner">
+        <h1>⚡ Enterprise Sales Command Suite</h1>
+        <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and smart analytical heatmaps.</p>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- LIVE FILE UPLOAD ENGINE WITH WELCOME SCREEN ---
+st.sidebar.markdown("### 📂 Data Source Ingestion")
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Sales Excel Sheet:", 
+    type=["xlsx", "xls"], 
+    key="sidebar_uploader"
+)
+
+raw_df = None
+
+# Attempt loading from upload or local default file
+if uploaded_file is not None:
+    try:
         raw_df = process_data(uploaded_file)
-        st.sidebar.success("🎉 Custom data layer uploaded successfully!")
-    else:
+        st.sidebar.success("🎉 Data loaded successfully!")
+    except Exception as e:
+        st.sidebar.error("Error reading uploaded file. Make sure it's a valid Excel sheet.")
+
+elif os.path.exists("Distributer wise sale.xlsx"):
+    try:
         raw_df = process_data("Distributer wise sale.xlsx")
-        st.sidebar.info("ℹ️ Using fallback repository Excel file.")
-except Exception as e:
-    st.error("Missing Source Data: Please drop an Excel sheet inside the file uploader slot or verify 'Distributer wise sale.xlsx' exists.")
+        st.sidebar.info("ℹ️ Using default repository file.")
+    except Exception:
+        pass
+
+# If no data is available yet, display a clean landing page dropzone
+if raw_df is None:
+    st.info("👋 **Welcome! Please upload your Excel sheet to launch the dashboard.**")
+    main_uploaded_file = st.file_uploader(
+        "Drop your Sales Excel file (.xlsx) here to start:", 
+        type=["xlsx", "xls"],
+        key="main_uploader"
+    )
+    if main_uploaded_file is not None:
+        try:
+            raw_df = process_data(main_uploaded_file)
+            st.rerun()
+        except Exception as e:
+            st.error("Error processing file. Please check column headers.")
     st.stop()
 
 # Identify core targets
@@ -98,22 +128,14 @@ user_col = "USER" if "USER" in raw_df.columns else raw_df.columns[0]
 dist_col = "Distributor" if "Distributor" in raw_df.columns else raw_df.columns[1]
 beat_col = "Beat" if "Beat" in raw_df.columns else raw_df.columns[2]
 
-# --- SYSTEM SUB-FEATURE: DATA QUALITY & ANOMALY WARNINGS ---
+# --- DATA QUALITY & ANOMALY WARNINGS ---
 quality_alerts = []
 if raw_df[user_col].isnull().any() or raw_df[dist_col].isnull().any():
     quality_alerts.append("⚠️ **Missing Data Warning:** Empty values detected in User/Distributor columns.")
-anomaly_limit = raw_df['QTY'].mean() + (3 * raw_df['QTY'].std())
-high_orders = raw_df[raw_df['QTY'] > anomaly_limit]
+anomaly_limit = raw_df['QTY'].mean() + (3 * raw_df['QTY'].std()) if not raw_df.empty else 0
+high_orders = raw_df[raw_df['QTY'] > anomaly_limit] if anomaly_limit > 0 else pd.DataFrame()
 if not high_orders.empty:
     quality_alerts.append(f"🚨 **Anomaly Detection:** {len(high_orders)} rows flagged with unusually large volumes (> {int(anomaly_limit)} units).")
-
-# 4. App Main Workspace Header Banner
-st.markdown("""
-    <div class="hero-banner">
-        <h1>⚡ Enterprise Sales Command Suite v3.3</h1>
-        <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and smart analytical heatmaps.</p>
-    </div>
-""", unsafe_allow_html=True)
 
 if quality_alerts:
     with st.expander("🛠️ System Data Quality & Anomaly Report"):
@@ -123,7 +145,7 @@ if quality_alerts:
 tab_main, tab_compare, tab_quality = st.tabs(["📊 Multi-Level Deep Analysis", "🔀 Competitor Cross-Comparison", "🔍 Operational Risk & Anomaly Audit"])
 
 with tab_main:
-    # --- USABILITY: DYNAMIC SEARCH & GLOBAL FILTERS ---
+    # USABILITY: DYNAMIC SEARCH & GLOBAL FILTERS
     st.markdown("### 🎛️ Navigation Deck")
     c_search, c_toggle = st.columns([2, 1])
     with c_search:
@@ -163,7 +185,7 @@ with tab_main:
             working_df['PrimaryCategory'].astype(str).str.contains(global_search, case=False)
         ]
 
-    # --- TOP PERFORMER BADGES & AUTOMATED SUMMARY LINE ---
+    # TOP PERFORMER BADGES & AUTOMATED SUMMARY LINE
     st.markdown("### 💡 Auto-Generated Performance Briefing")
     gl_tot = working_df['QTY'].sum()
     p1_tot = working_df['Period 1'].sum()
@@ -183,7 +205,7 @@ with tab_main:
         </div>
     """, unsafe_allow_html=True)
 
-    # --- WHATSAPP-READY QUICK SUMMARY ---
+    # WHATSAPP-READY QUICK SUMMARY
     with st.expander("💬 Generate WhatsApp-Ready Text Summary"):
         wa_text = f"📊 *Sales Performance Update*\n\n*Target Focus:* {sel_user}\n*Total Volume:* {int(gl_tot):,} Units\n*Period 1 vs Period 2:* {int(p1_tot):,} ➔ {int(p2_tot):,} ({growth_arrow}{abs(growth_rate):.1f}%)\n*Active Beats Covered:* {working_df[beat_col].nunique()}"
         st.markdown(f'<div class="whatsapp-box">{wa_text.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
@@ -197,7 +219,6 @@ with tab_main:
 
     st.write("")
 
-    # Visual Matrix Rows Grouping Routing
     if sel_user == "📊 Show All System Users":
         agg_col = user_col
     elif sel_dist == "📊 Show All Rep Distributors" or sel_dist.startswith("Select"):
@@ -236,13 +257,12 @@ with tab_main:
         fig_time = px.line(timeline_df, x='Date', y='QTY', markers=True, template=plotly_template, color_discrete_sequence=[primary_color])
         st.plotly_chart(fig_time, use_container_width=True)
 
-    # --- ADVANCED LEDGER TABLE ---
+    # ADVANCED LEDGER TABLE
     st.subheader("📋 Advanced Ledger Matrix Dashboard")
     st.markdown("_Click column headers to instantly sort data structure rows._")
     
     styled_view = working_df[[user_col, dist_col, beat_col, 'PrimaryCategory', 'Period 1', 'Period 2', 'QTY']].copy()
     
-    # Native Streamlit dataframe with interactive sorting & numeric formatting
     st.dataframe(
         styled_view,
         use_container_width=True,
