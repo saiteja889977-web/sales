@@ -41,8 +41,8 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# --- NEW EXTENSION: LIVE FILE UPLOAD ENGINE ---
-st.sidebar.markdown("### 📂 Data Source ingestion")
+# --- LIVE FILE UPLOAD ENGINE ---
+st.sidebar.markdown("### 📂 Data Source Ingestion")
 uploaded_file = st.sidebar.file_uploader(
     "Upload a new Sales Excel Sheet directly here:", 
     type=["xlsx", "xls"], 
@@ -52,7 +52,6 @@ uploaded_file = st.sidebar.file_uploader(
 # 3. Robust Data Processing Pipeline
 @st.cache_data
 def process_data(file_source):
-    # Read either from string path or direct byte file buffer stream
     df = pd.read_excel(file_source, sheet_name="Sheet1")
     df.columns = df.columns.astype(str).str.strip()
     
@@ -111,7 +110,7 @@ if not high_orders.empty:
 # 4. App Main Workspace Header Banner
 st.markdown("""
     <div class="hero-banner">
-        <h1>⚡ Enterprise Sales Command Suite v3.1</h1>
+        <h1>⚡ Enterprise Sales Command Suite v3.2</h1>
         <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and smart analytical heatmaps.</p>
     </div>
 """, unsafe_allow_html=True)
@@ -217,10 +216,11 @@ with tab_main:
     with g_right:
         st.subheader("📈 Period Trend Dynamic Evaluation")
         trend_df = working_df.groupby(agg_col)[['Period 1', 'Period 2']].sum().reset_index().head(15)
-        fig_trend = go.Figure(template=plotly_template)
+        # --- FIXED ISSUE HERE: Moved template inside update_layout ---
+        fig_trend = go.Figure()
         fig_trend.add_trace(go.Bar(x=trend_df[agg_col], y=trend_df['Period 1'], name='Period 1', marker_color='#93C5FD'))
         fig_trend.add_trace(go.Bar(x=trend_df[agg_col], y=trend_df['Period 2'], name='Period 2', marker_color='#1E40AF'))
-        fig_trend.update_layout(barmode='group', title_text=f"Comparison Vectors ({agg_col})")
+        fig_trend.update_layout(template=plotly_template, barmode='group', title_text=f"Comparison Vectors ({agg_col})")
         st.plotly_chart(fig_trend, use_container_width=True)
 
     # Secondary Advanced Graphics
@@ -299,7 +299,7 @@ with tab_quality:
         else:
             st.success("No identical structural row anomalies detected inside data frame boundaries.")
 
-# 10. Dynamic Document Exporter
+# Dynamic Document Exporter
 st.sidebar.markdown("---")
 csv = working_df.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
