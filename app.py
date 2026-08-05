@@ -36,22 +36,17 @@ st.markdown(f"""
     .stApp {{ background-color: {bg_color}; color: {text_color}; }}
     .hero-banner {{ background: {accent_gradient}; padding: 25px; border-radius: 12px; color: #FFFFFF; margin-bottom: 25px; }}
     .kpi-card {{ background-color: {card_bg}; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 4px solid {primary_color}; text-align: center; color: {text_color}; }}
-    .insight-box {{ background-color: {card_bg}; border-left: 5px solid #10B981; padding: 15px; border-radius: 8px; margin-bottom: 25px; color: {text_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
-    .whatsapp-box {{ background-color: #DCF8C6; border-left: 5px solid #25D366; padding: 15px; border-radius: 8px; color: #075E54; font-family: monospace; font-size: 14px; margin-bottom: 20px; }}
     </style>
 """, unsafe_allow_html=True)
 
 # 3. Dynamic Column Matching Engine
-@st.cache_data
 def process_data(file_source):
-    # Reads the uploaded file efficiently
     df = pd.read_excel(file_source, sheet_name=0)
     df.columns = df.columns.astype(str).str.strip()
     
     mapping = {}
     for col in df.columns:
         c_upper = col.upper()
-        # Flexibly match columns regardless of minor naming differences
         if 'USER' in c_upper or 'REP' in c_upper or 'AGENT' in c_upper:
             mapping[col] = 'USER'
         elif 'DISTRIBUTOR' in c_upper or 'DEALER' in c_upper or 'CLIENT' in c_upper:
@@ -71,20 +66,23 @@ def process_data(file_source):
         
     df = df.rename(columns=mapping)
     
-    # Force default primary category to 'Heartiva' if absent or empty
+    # Set default primary category to 'Heartiva' if not specified or empty
     if 'PrimaryCategory' not in df.columns:
         df['PrimaryCategory'] = 'Heartiva'
     else:
         df['PrimaryCategory'] = df['PrimaryCategory'].fillna('Heartiva')
 
-    # Defaults for other missing calculated attributes
+    # Defaults for other required fields
     if 'QTY' not in df.columns:
-        # If QTY column is missing, find the first numeric column or default to 1
         num_cols = df.select_dtypes(include=['number']).columns
-        if len(num_cols) > 0:
-            df['QTY'] = df[num_cols[0]]
-        else:
-            df['QTY'] = 1
+        df['QTY'] = df[num_cols[0]] if len(num_cols) > 0 else 1
+
+    if 'USER' not in df.columns:
+        df['USER'] = 'Default User'
+    if 'Distributor' not in df.columns:
+        df['Distributor'] = 'Default Distributor'
+    if 'Beat' not in df.columns:
+        df['Beat'] = 'Default Beat'
 
     if 'Period 1' not in df.columns: 
         df['Period 1'] = df['QTY'] * 0.45
@@ -99,15 +97,15 @@ def process_data(file_source):
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce').fillna(pd.Timestamp('2026-08-01'))
     return df
 
-# App Header
+# App Banner Header
 st.markdown("""
     <div class="hero-banner">
         <h1>⚡ Enterprise Sales Command Suite</h1>
-        <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and smart analytical heatmaps.</p>
+        <p>Operational execution matrix featuring live user dashboard uploads, period tracking, and dynamic analytics.</p>
     </div>
 """, unsafe_allow_html=True)
 
-# File Uploader Slot
+# Sidebar Uploader
 st.sidebar.markdown("### 📂 Data Source Ingestion")
 uploaded_file = st.sidebar.file_uploader("Upload Sales Excel Sheet:", type=["xlsx", "xls"], key="sidebar_uploader")
 
@@ -116,35 +114,36 @@ raw_df = None
 if uploaded_file is not None:
     try:
         raw_df = process_data(uploaded_file)
-        st.sidebar.success("🎉 Data loaded & headers matched!")
+        st.sidebar.success("🎉 Data loaded & mapped!")
     except Exception as e:
-        st.sidebar.error("Error reading file. Please check Excel formatting.")
+        st.sidebar.error(f"Error parsing uploaded file: {e}")
 
 elif os.path.exists("Distributer wise sale.xlsx"):
     try:
         raw_df = process_data("Distributer wise sale.xlsx")
-        st.sidebar.info("ℹ️ Using default repository file.")
+        st.sidebar.info("ℹ️ Loaded default repository file.")
     except Exception:
         pass
 
+# Landing page if no data loaded yet
 if raw_df is None:
-    st.info("👋 **Welcome! Upload your sales sheet to view performance metrics.**")
+    st.info("👋 **Welcome! Please drop your Excel sheet below to launch the dashboard.**")
     main_uploaded_file = st.file_uploader("Drop your Sales Excel file (.xlsx) here:", type=["xlsx", "xls"], key="main_uploader")
     if main_uploaded_file is not None:
         try:
             raw_df = process_data(main_uploaded_file)
             st.rerun()
-        except Exception:
-            st.error("Error processing file.")
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
     st.stop()
 
-# Identify core column targets dynamically
-user_col = "USER" if "USER" in raw_df.columns else raw_df.columns[0]
-dist_col = "Distributor" if "Distributor" in raw_df.columns else (raw_df.columns[1] if len(raw_df.columns) > 1 else raw_df.columns[0])
-beat_col = "Beat" if "Beat" in raw_df.columns else (raw_df.columns[2] if len(raw_df.columns) > 2 else raw_df.columns[0])
+# Assign mapped target columns
+user_col = "USER"
+dist_col = "Distributor"
+beat_col = "Beat"
 
-# Navigation Hub
-tab_main, tab_compare, tab_quality = st.tabs(["📊 Multi-Level Deep Analysis", "🔀 Competitor Cross-Comparison", "🔍 Operational Risk & Anomaly Audit"])
+# Main Navigation Hub
+tab_main, tab_compare = st.tabs(["📊 Multi-Level Analysis", "🔀 Leaderboard"])
 
 with tab_main:
     st.markdown("### 🎛️ Navigation Deck")
@@ -184,7 +183,7 @@ with tab_main:
             working_df['PrimaryCategory'].astype(str).str.contains(global_search, case=False)
         ]
 
-    # KPI Interface Cards Grid
+    # Metrics Row
     gl_tot = working_df['QTY'].sum()
     p1_tot = working_df['Period 1'].sum()
     p2_tot = working_df['Period 2'].sum()
@@ -197,16 +196,16 @@ with tab_main:
 
     st.write("")
 
-    # Graphics
+    # Visual Charts
     g_left, g_right = st.columns(2)
     with g_left:
-        st.subheader("📊 Primary Category Breakdown")
+        st.subheader("📊 Category Breakdown")
         cat_df = working_df.groupby('PrimaryCategory')['QTY'].sum().reset_index()
         fig_cat = px.pie(cat_df, values='QTY', names='PrimaryCategory', hole=0.3, template=plotly_template)
         st.plotly_chart(fig_cat, use_container_width=True)
         
     with g_right:
-        st.subheader("📈 Period Trend Dynamic Evaluation")
+        st.subheader("📈 Period Trend Evaluation")
         agg_col = user_col if sel_user == "📊 Show All System Users" else dist_col
         trend_df = working_df.groupby(agg_col)[['Period 1', 'Period 2']].sum().reset_index().head(15)
         fig_trend = go.Figure()
@@ -215,16 +214,12 @@ with tab_main:
         fig_trend.update_layout(template=plotly_template, barmode='group')
         st.plotly_chart(fig_trend, use_container_width=True)
 
-    # Matrix Table
-    st.subheader("📋 Advanced Ledger Matrix Dashboard")
+    # Data Table Display
+    st.subheader("📋 Ledger Dashboard")
     styled_view = working_df[[user_col, dist_col, beat_col, 'PrimaryCategory', 'Period 1', 'Period 2', 'QTY']].copy()
     st.dataframe(styled_view, use_container_width=True)
 
 with tab_compare:
-    st.subheader("🔀 Leaderboard & Comparison")
+    st.subheader("🔀 User Leaderboard")
     leaderboard = raw_df.groupby(user_col).agg(Total_Volume=('QTY', 'sum')).reset_index().sort_values(by='Total_Volume', ascending=False)
     st.table(leaderboard)
-
-with tab_quality:
-    st.subheader("🚨 Risk Identification & Diagnostics")
-    st.write("Data quality scans active.")
